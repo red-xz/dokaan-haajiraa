@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>দোকান হাজিরা — কর্মচারীর হাজিরা ও বেতনের হিসাব</title>
+<meta name="description" content="যেকোনো দোকানের কর্মচারীর হাজিরা ও বেতনের হিসাব">
+<meta name="theme-color" content="#0d9488">
+<!-- হোম স্ক্রিনে যোগ করার জন্য (PWA-lite) -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="দোকান হাজিরা">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">🏪 দোকান হাজিরা</div>
+    <div class="shop-name" id="header-shop-name">কর্মচারীর হাজিরা ও বেতন</div>
+  </header>
+
+  <div id="config-warning" class="warning hidden">⚠️ Firebase এখনো সেট করা হয়নি — অ্যাডমিনকে বলুন কনফিগ বসাতে। ততক্ষণ হাজিরা/বেতনের তথ্য সংরক্ষণ করা যাবে না।</div>
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- হোম: আপনি কে? -->
+  <section id="screen-home" class="screen active">
+    <div class="card center">
+      <h1>দোকান হাজিরা</h1>
+      <p class="muted">কর্মচারীর হাজিরা ও বেতনের হিসাব</p>
+      <p>আপনি কে?</p>
+      <button class="btn big" id="btn-role-admin">আমি দোকানদার (অ্যাডমিন)</button>
+      <button class="btn big secondary" id="btn-role-emp">আমি সেলস ম্যান</button>
+    </div>
+  </section>
+
+  <!-- অ্যাডমিন শুরু -->
+  <section id="screen-admin-start" class="screen">
+    <div class="card">
+      <h2>অ্যাডমিন</h2>
+      <button class="btn big" id="btn-new-shop">নতুন দোকান খুলুন</button>
+      <button class="btn big secondary" id="btn-open-shop">কোড দিয়ে দোকান খুলুন</button>
+      <button class="btn link" data-nav="home">← ফিরে যান</button>
+    </div>
+  </section>
+
+  <!-- নতুন দোকান খোলা -->
+  <section id="screen-admin-create" class="screen">
+    <div class="card">
+      <h2>নতুন দোকান খুলুন</h2>
+      <label for="input-shop-name">দোকানের নাম</label>
+      <input id="input-shop-name" type="text" placeholder="যেমন: রহিম স্টোর">
+      <button class="btn" id="btn-create-shop">দোকান খুলুন</button>
+      <div id="shop-code-box" class="code-box hidden">
+        <p>আপনার দোকানের কোড:</p>
+        <div class="code" id="shop-code-display"></div>
+        <p class="muted small">এই কোডটি সেলসম্যানদের দিন — তারা এই কোড দিয়ে দোকানে যোগ দেবে।</p>
+        <button class="btn secondary" id="btn-copy-code">কোড কপি করুন</button>
+      </div>
+      <div id="location-box" class="hidden">
+        <p>দোকানের লোকেশন সেট করুন (দোকানে দাঁড়িয়ে এই বাটন চাপুন):</p>
+        <button class="btn" id="btn-set-location">📍 দোকানের লোকেশন সেট করুন</button>
+        <p id="location-status" class="muted"></p>
+      </div>
+      <button class="btn big hidden" id="btn-goto-admin-dash">ড্যাশবোর্ডে যান →</button>
+      <button class="btn link" data-nav="admin-start">← ফিরে যান</button>
+    </div>
+  </section>
+
+  <!-- কোড দিয়ে দোকান খোলা -->
+  <section id="screen-admin-open" class="screen">
+    <div class="card">
+      <h2>কোড দিয়ে দোকান খুলুন</h2>
+      <label for="input-open-code">দোকানের কোড</label>
+      <input id="input-open-code" type="text" placeholder="যেমন: NZJ9BJ" maxlength="6" class="uppercase">
+      <button class="btn" id="btn-open-shop-go">দোকান খুলুন</button>
+      <button class="btn link" data-nav="admin-start">← ফিরে যান</button>
+    </div>
+  </section>
+
+  <!-- অ্যাডমিন ড্যাশবোর্ড -->
+  <section id="screen-admin-dash" class="screen">
+    <div class="card">
+      <h2 id="admin-shop-title"></h2>
+      <p class="muted">কোড: <b id="admin-shop-code"></b> • <span id="admin-location-status"></span></p>
+      <button class="btn small secondary" id="btn-set-location-2">📍 লোকেশন সেট/বদলান</button>
+      <button class="btn small link" id="btn-admin-logout">লগ আউট</button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="today">আজকের হাজিরা</button>
+      <button class="tab" data-tab="employees">কর্মচারী</button>
+      <button class="tab" data-tab="salary">বেতন</button>
+      <button class="tab" data-tab="advances">অগ্রিম ও ছুটি</button>
+    </div>
+    <div id="tab-today" class="tab-panel active">
+      <div class="card">
+        <h3>আজকের হাজিরা — <span id="today-date-bn"></span></h3>
+        <div id="today-list"></div>
+      </div>
+      <div class="card">
+        <h3>🔔 আজকের নোটিশ</h3>
+        <div id="notice-list"></div>
+      </div>
+    </div>
+    <div id="tab-employees" class="tab-panel">
+      <div class="card">
+        <h3>কর্মচারী তালিকা</h3>
+        <div id="employee-list"></div>
+      </div>
+    </div>
+    <div id="tab-salary" class="tab-panel">
+      <div class="card">
+        <h3>মাসিক বেতন</h3>
+        <label for="salary-month">মাস বাছুন</label>
+        <input type="month" id="salary-month">
+        <div id="salary-table"></div>
+      </div>
+    </div>
+    <div id="tab-advances" class="tab-panel">
+      <div class="card">
+        <h3>অগ্রিম দিন</h3>
+        <label for="advance-emp">কর্মচারী</label>
+        <select id="advance-emp"></select>
+        <label for="advance-amount">টাকার পরিমাণ</label>
+        <input id="advance-amount" type="number" min="0" placeholder="যেমন: ৫০০০">
+        <label for="advance-note">নোট (ঐচ্ছিক)</label>
+        <input id="advance-note" type="text" placeholder="যেমন: ঈদের অগ্রিম">
+        <button class="btn" id="btn-add-advance">অগ্রিম যোগ করুন</button>
+        <div id="advance-list"></div>
+      </div>
+      <div class="card">
+        <h3>ছুটি দিন</h3>
+        <label for="leave-emp">কর্মচারী</label>
+        <select id="leave-emp"></select>
+        <label for="leave-date">তারিখ</label>
+        <input type="date" id="leave-date">
+        <button class="btn" id="btn-mark-leave">ছুটি হিসেবে চিহ্নিত করুন</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- সেলসম্যান যোগদান -->
+  <section id="screen-emp-join" class="screen">
+    <div class="card">
+      <h2>সেলস ম্যান হিসেবে যোগ দিন</h2>
+      <label for="input-join-code">দোকানের কোড</label>
+      <input id="input-join-code" type="text" placeholder="যেমন: NZJ9BJ" maxlength="6" class="uppercase">
+      <label for="input-join-name">আপনার নাম</label>
+      <input id="input-join-name" type="text" placeholder="আপনার নাম">
+      <label for="input-join-phone">মোবাইল নম্বর</label>
+      <input id="input-join-phone" type="tel" placeholder="০১XXXXXXXXX">
+      <button class="btn" id="btn-join-shop">যোগ দিন</button>
+      <button class="btn link" data-nav="home">← ফিরে যান</button>
+    </div>
+  </section>
+
+  <!-- সেলসম্যান ড্যাশবোর্ড -->
+  <section id="screen-emp-dash" class="screen">
+    <div class="card">
+      <h2 id="emp-greeting"></h2>
+      <p class="muted" id="emp-shop-line"></p>
+      <div id="emp-today-status" class="status-box"></div>
+      <button class="btn big" id="btn-checkin">✅ হাজিরা দিন (চেক-ইন)</button>
+      <button class="btn big secondary" id="btn-checkout">🏠 ছুটি নিন (চেক-আউট)</button>
+      <p id="emp-location-msg" class="muted"></p>
+      <button class="btn small link" id="btn-emp-logout">লগ আউট</button>
+    </div>
+    <div class="card">
+      <h3>আমার এই মাসের হিসাব</h3>
+      <div id="emp-summary"></div>
+    </div>
+  </section>
+
+  <footer class="footer">© 2026 SOHEL. ALL RIGHTS RESERVED.</footer>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

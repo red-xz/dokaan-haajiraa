@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ছোট প্রাইভেট দোকানের অ্যাপ — শপ কোডই অ্যাক্সেসের চাবি।
+    // যেকোনো অ্যানোনিমাস লগইন করা ব্যবহারকারী (অ্যাডমিন/সেলসম্যান)
+    // দোকানের তথ্য পড়তে ও লিখতে পারবে। দোকানের কোড না জানলে
+    // কেউ দোকানের ডকুমেন্ট খুঁজে পাবে না।
+    match /shops/{shopCode}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
