@@ -1,8 +1,8 @@
-// Firebase কনফিগ — আসল মানগুলো Firebase Console থেকে নিয়ে এখানে বসাতে হবে।
-// Firebase Console > Project Settings > Your apps > Web app — সেখান থেকে
-// firebaseConfig অবজেক্টটি কপি করে নিচের "REPLACE_ME" গুলোর জায়গায় বসান।
-// কনফিগ না বসানো পর্যন্ত অ্যাপটি একটি সতর্কবার্তা দেখাবে এবং
-// হাজিরা/বেতনের তথ্য সংরক্ষণ করবে না।
+// Firebase config — take the real values from the Firebase Console and put them here.
+// Firebase Console > Project Settings > Your apps > Web app — copy the
+// firebaseConfig object from there and paste it over the "REPLACE_ME" values below.
+// Until the config is added, the app shows a warning and does not
+// save any attendance/salary data.
 
 export const firebaseConfig = {
   apiKey: "AIzaSyAPtmN_cGHy5Hcc3--5Eq391hloEbZ-tQs",
@@ -13,6 +13,6 @@ export const firebaseConfig = {
   appId: "1:896306538242:web:cc3ca63d8b3bcd0770841b"
 };
 
-// আসল কনফিগ বসানো হয়েছে কি না
+// Whether the real config has been added
 export const isFirebaseConfigured =
   !Object.values(firebaseConfig).some(v => v === "REPLACE_ME" || !v);

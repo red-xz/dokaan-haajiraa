@@ -1,10 +1,10 @@
-// দোকান হাজিরা — মূল অ্যাপ (Firebase + Firestore)
-// Firebase v10 মডুলার SDK, CDN থেকে লোড হয় (কনফিগ বসানো থাকলে)।
-// ডেটা মডেল:
-//   shops/{shopCode}                                  — দোকান (নাম, লোকেশন)
-//   shops/{shopCode}/employees/{empId}                — কর্মচারী (নাম, ফোন, মাসিক বেতন)
-//   shops/{shopCode}/attendance/{empId_YYYY-MM-DD}    — হাজিরা (present/absent/leave)
-//   shops/{shopCode}/advances/{advId}                 — অগ্রিম (কর্মচারী, টাকা, তারিখ)
+// Shop Attendance — main app (Firebase + Firestore)
+// Firebase v10 modular SDK, loaded from CDN (when configured).
+// Data model:
+//   shops/{shopCode}                                  — shop (name, location)
+//   shops/{shopCode}/employees/{empId}                — employee (name, phone, monthly salary)
+//   shops/{shopCode}/attendance/{empId_YYYY-MM-DD}    — attendance (present/absent/leave)
+//   shops/{shopCode}/advances/{advId}                 — advance (employee, money, date)
 
 import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
 import {
@@ -15,8 +15,8 @@ import {
 
 let db = null;      // Firestore
 let auth = null;    // Firebase Auth
-let user = null;    // অ্যানোনিমাস ব্যবহারকারী
-let fb = null;      // Firebase মডিউলগুলো (config থাকলে লোড হবে)
+let user = null;    // anonymous user
+let fb = null;      // Firebase modules (loaded when configured)
 
 const state = {
   role: null, shopCode: null, shop: null,
@@ -25,10 +25,10 @@ const state = {
 
 const $ = id => document.getElementById(id);
 const screens = ['home', 'admin-start', 'admin-create', 'admin-open', 'admin-dash', 'emp-join', 'emp-dash'];
-const DEFAULT_HEADER_NAME = 'কর্মচারীর হাজিরা ও বেতন';
+const DEFAULT_HEADER_NAME = 'Employee Attendance & Salary';
 
-// হেডারে দোকানের নাম দেখান — কোনো দোকান খোলা থাকলে তার নিজের নাম,
-// না থাকলে সাধারণ লেখা (প্রত্যেক দোকানদার নিজের দোকানের নাম দেখবে)
+// Show the shop name in the header — the shop's own name when one is open,
+// otherwise the generic text (each shop owner sees their own shop's name)
 function updateHeaderName() {
   $('header-shop-name').textContent = state.shop ? state.shop.name : DEFAULT_HEADER_NAME;
 }
@@ -47,23 +47,23 @@ function toast(msg, isError = false) {
   t._timer = setTimeout(() => t.classList.add('hidden'), 5000);
 }
 
-// Firebase ছাড়া কোনো ডেটা কাজ চলবে না — পরিষ্কার বার্তা দিন
+// No data work is possible without Firebase — say so clearly
 function needFirebase() {
   if (!isFirebaseConfigured) {
-    toast('Firebase এখনো সেট করা হয়নি — অ্যাডমিনকে বলুন কনফিগ বসাতে।', true);
+    toast('Firebase is not set up yet — ask the admin to add the config.', true);
     return false;
   }
   if (!user) {
-    toast('লগইন হচ্ছে, একটু অপেক্ষা করুন…', true);
+    toast('Logging in, please wait…', true);
     return false;
   }
   return true;
 }
 
-// ---------- Firebase চালু ----------
+// ---------- Firebase init ----------
 
 async function initFirebase() {
-  // SDK শুধু কনফিগ থাকলেই লোড করুন (প্লেসহোল্ডার দিয়ে initializeApp ফেল করবে)
+  // Only load the SDK when configured (initializeApp would fail with placeholders)
   const appMod = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
   const authMod = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
   const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
@@ -75,7 +75,7 @@ async function initFirebase() {
   user = cred.user;
 }
 
-// ---------- Firestore রেফারেন্স ----------
+// ---------- Firestore references ----------
 
 const shopRef = code => fb.doc(db, 'shops', code);
 const empsCol = code => fb.collection(db, 'shops', code, 'employees');
@@ -83,27 +83,27 @@ const attCol = code => fb.collection(db, 'shops', code, 'attendance');
 const advCol = code => fb.collection(db, 'shops', code, 'advances');
 const attDoc = (code, empId, date) => fb.doc(db, 'shops', code, 'attendance', `${empId}_${date}`);
 
-// ---------- লোকেশন ----------
+// ---------- Location ----------
 
 function getPosition() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      return reject(new Error('এই ব্রাউজারে লোকেশন সাপোর্ট করে না।'));
+      return reject(new Error('This browser does not support location.'));
     }
     navigator.geolocation.getCurrentPosition(resolve, err => {
-      if (err.code === 1) reject(new Error('লোকেশনের অনুমতি দেওয়া হয়নি — ব্রাউজারের সেটিংস থেকে অনুমতি দিন।'));
-      else reject(new Error('লোকেশন পাওয়া যায়নি — আবার চেষ্টা করুন।'));
+      if (err.code === 1) reject(new Error('Location permission was not granted — allow it in your browser settings.'));
+      else reject(new Error('Could not get your location — try again.'));
     }, { enableHighAccuracy: true, timeout: 15000 });
   });
 }
 
-// ---------- অ্যাডমিন: দোকান খোলা ----------
+// ---------- Admin: open shop ----------
 
 async function createShop() {
   if (!needFirebase()) return;
   const name = $('input-shop-name').value.trim();
-  if (!name) return toast('দোকানের নাম লিখুন।', true);
-  // ইউনিক কোড বানান (আগে থেকে থাকলে আবার বানান)
+  if (!name) return toast('Please enter the shop name.', true);
+  // Generate a unique code (retry if it already exists)
   let code, exists = true, tries = 0;
   while (exists && tries < 10) {
     code = generateShopCode();
@@ -111,7 +111,7 @@ async function createShop() {
     exists = snap.exists();
     tries++;
   }
-  if (exists) return toast('কোড বানাতে সমস্যা হয়েছে — আবার চেষ্টা করুন।', true);
+  if (exists) return toast('Could not generate a code — try again.', true);
   await fb.setDoc(shopRef(code), { name, location: null, createdAt: fb.serverTimestamp() });
   state.shopCode = code;
   state.shop = { name, location: null };
@@ -121,45 +121,45 @@ async function createShop() {
   $('shop-code-box').classList.remove('hidden');
   $('location-box').classList.remove('hidden');
   $('btn-goto-admin-dash').classList.remove('hidden');
-  toast('দোকান খোলা হয়েছে! এখন দোকানের লোকেশন সেট করুন।');
+  toast('Shop opened! Now set the shop location.');
 }
 
 async function openShop() {
   if (!needFirebase()) return;
   const code = $('input-open-code').value.trim().toUpperCase();
-  if (!code) return toast('দোকানের কোড লিখুন।', true);
+  if (!code) return toast('Please enter the shop code.', true);
   const snap = await fb.getDoc(shopRef(code));
-  if (!snap.exists()) return toast('এই কোডের কোনো দোকান পাওয়া যায়নি।', true);
+  if (!snap.exists()) return toast('No shop found with this code.', true);
   state.shopCode = code;
   state.shop = snap.data();
   localStorage.setItem('dh_admin_shop', code);
   await loadAdminDash();
 }
 
-// দোকানের লোকেশন সেট করা (দোকানে দাঁড়িয়ে করতে হবে)
+// Set the shop location (must be done standing at the shop)
 async function setLocation() {
   if (!needFirebase()) return;
-  toast('লোকেশন নেওয়া হচ্ছে…');
+  toast('Getting location…');
   try {
     const pos = await getPosition();
     const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
     await fb.updateDoc(shopRef(state.shopCode), { location: loc });
     state.shop.location = loc;
-    $('location-status').textContent = `লোকেশন সেট হয়েছে: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+    $('location-status').textContent = `Location set: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
     updateAdminHeader();
-    toast('দোকানের লোকেশন সেট হয়েছে।');
+    toast('Shop location set.');
   } catch (e) {
     toast(e.message, true);
   }
 }
 
-// ---------- অ্যাডমিন: ড্যাশবোর্ড ----------
+// ---------- Admin: dashboard ----------
 
 function updateAdminHeader() {
   $('admin-shop-title').textContent = state.shop ? state.shop.name : '';
   $('admin-shop-code').textContent = state.shopCode || '';
   $('admin-location-status').textContent =
-    state.shop && state.shop.location ? 'লোকেশন সেট আছে ✓' : 'লোকেশন সেট করা হয়নি';
+    state.shop && state.shop.location ? 'Location set ✓' : 'Location not set';
   updateHeaderName();
 }
 
@@ -177,7 +177,7 @@ async function loadAdminDash() {
   showScreen('admin-dash');
 }
 
-// আজকের হাজিরা + নোটিশ (কে কখন এসেছে)
+// Today's attendance + notices (who came when)
 async function renderToday() {
   const today = dateStr(new Date());
   const [y, m, d] = today.split('-');
@@ -192,34 +192,34 @@ async function renderToday() {
     const rec = byEmp[emp.id];
     if (rec && rec.status === 'present') {
       const t = rec.checkIn && rec.checkIn.toDate ? fmtTime(rec.checkIn.toDate()) : '—';
-      html += `<div class="row"><span>${emp.name}</span><span class="badge ok">এসেছে • ${t}</span></div>`;
+      html += `<div class="row"><span>${emp.name}</span><span class="badge ok">Present • ${t}</span></div>`;
       notices.push({ name: emp.name, time: rec.checkIn && rec.checkIn.toDate ? rec.checkIn.toDate() : null });
     } else if (rec && rec.status === 'leave') {
-      html += `<div class="row"><span>${emp.name}</span><span class="badge warn">ছুটি</span></div>`;
+      html += `<div class="row"><span>${emp.name}</span><span class="badge warn">Leave</span></div>`;
     } else {
-      html += `<div class="row"><span>${emp.name}</span><span class="badge bad">এখনো আসেনি</span></div>`;
+      html += `<div class="row"><span>${emp.name}</span><span class="badge bad">Not here yet</span></div>`;
     }
   }
-  $('today-list').innerHTML = html || '<p class="muted">কোনো কর্মচারী এখনো যোগ দেয়নি।</p>';
+  $('today-list').innerHTML = html || '<p class="muted">No employee has joined yet.</p>';
   notices.sort((a, b) => (a.time || 0) - (b.time || 0));
   $('notice-list').innerHTML = notices.length
-    ? notices.map(n => `<div class="row"><span>🔔 ${n.name} দোকানে এসেছে</span><span class="muted">${n.time ? fmtTime(n.time) : ''}</span></div>`).join('')
-    : '<p class="muted">আজ এখনো কেউ হাজিরা দেয়নি।</p>';
+    ? notices.map(n => `<div class="row"><span>🔔 ${n.name} arrived at the shop</span><span class="muted">${n.time ? fmtTime(n.time) : ''}</span></div>`).join('')
+    : '<p class="muted">Nobody has marked attendance today yet.</p>';
 }
 
-// কর্মচারী তালিকা + বেতন সেট করা
+// Employee list + set salary
 function renderEmployees() {
   $('employee-list').innerHTML = state.employees.length
     ? state.employees.map(emp => `
       <div class="emp-card">
         <div><b>${emp.name}</b><br><span class="muted">${toBn(emp.phone || '')}</span></div>
         <div class="salary-edit">
-          <label>মাসিক বেতন (টাকা)</label>
+          <label>Monthly salary (Taka)</label>
           <input type="number" min="0" value="${emp.monthlySalary || 0}" data-salary-for="${emp.id}">
-          <button class="btn small" data-save-salary="${emp.id}">সেভ করুন</button>
+          <button class="btn small" data-save-salary="${emp.id}">Save</button>
         </div>
       </div>`).join('')
-    : '<p class="muted">কোনো কর্মচারী এখনো যোগ দেয়নি।</p>';
+    : '<p class="muted">No employee has joined yet.</p>';
 
   document.querySelectorAll('[data-save-salary]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -229,13 +229,13 @@ function renderEmployees() {
       await fb.updateDoc(fb.doc(db, 'shops', state.shopCode, 'employees', id), { monthlySalary: salary });
       const emp = state.employees.find(e => e.id === id);
       if (emp) emp.monthlySalary = salary;
-      toast(`${emp ? emp.name : ''} এর বেতন ${toBnMoney(salary)} টাকা সেট হয়েছে।`);
+      toast(`Salary for ${emp ? emp.name : ''} set to ${toBnMoney(salary)} Taka.`);
       await renderSalary();
     });
   });
 }
 
-// মাসিক বেতনের টেবিল (সবার)
+// Monthly salary table (everyone)
 async function renderSalary() {
   const ym = $('salary-month').value;
   if (!ym) return;
@@ -243,8 +243,8 @@ async function renderSalary() {
   const monthIndex0 = month1 - 1;
   const start = `${ym}-01`;
   const end = `${ym}-${String(daysInMonth(year, monthIndex0)).padStart(2, '0')}`;
-  // এক মাসের সব হাজিরা/অগ্রিম একবারে এনে JS-এ কর্মচারী অনুযায়ী ভাগ করুন
-  // (এতে Firestore composite index লাগে না)
+  // Fetch one month's attendance/advances in one go and split per employee in JS
+  // (so no Firestore composite index is needed)
   const attSnap = await fb.getDocs(fb.query(attCol(state.shopCode), fb.where('date', '>=', start), fb.where('date', '<=', end)));
   const allRecords = attSnap.docs.map(d => d.data());
   const advSnap = await fb.getDocs(fb.query(advCol(state.shopCode), fb.where('date', '>=', start), fb.where('date', '<=', end)));
@@ -261,20 +261,20 @@ async function renderSalary() {
     rows += `<div class="salary-card">
       <b>${emp.name}</b>
       <div class="grid2">
-        <span>মাসিক বেতন</span><b>${toBnMoney(emp.monthlySalary || 0)} টাকা</b>
-        <span>দৈনিক মজুরি</span><span>${toBnMoney(s.dailyWage)} টাকা</span>
-        <span>উপস্থিত</span><span>${toBn(s.present)} দিন</span>
-        <span>শুক্রবার (বেতনসহ ছুটি)</span><span>${toBn(s.fridays)} দিন</span>
-        <span>ছুটি</span><span>${toBn(s.leave)} দিন</span>
-        <span>অনুপস্থিত</span><span>${toBn(s.absent)} দিন</span>
-        <span>কাটা যাবে</span><span>${toBnMoney(s.deduction)} টাকা</span>
-        <span>অগ্রিম নেওয়া</span><span>${toBnMoney(s.advanceTotal)} টাকা</span>
-        <span><b>পাওনা (বকেয়া)</b></span><b class="payable">${toBnMoney(s.payable)} টাকা</b>
+        <span>Monthly salary</span><b>${toBnMoney(emp.monthlySalary || 0)} Taka</b>
+        <span>Daily wage</span><span>${toBnMoney(s.dailyWage)} Taka</span>
+        <span>Present</span><span>${toBn(s.present)} days</span>
+        <span>Fridays (paid holiday)</span><span>${toBn(s.fridays)} days</span>
+        <span>Leave</span><span>${toBn(s.leave)} days</span>
+        <span>Absent</span><span>${toBn(s.absent)} days</span>
+        <span>Deduction</span><span>${toBnMoney(s.deduction)} Taka</span>
+        <span>Advances taken</span><span>${toBnMoney(s.advanceTotal)} Taka</span>
+        <span><b>Payable (due)</b></span><b class="payable">${toBnMoney(s.payable)} Taka</b>
       </div>
-      ${s.overAdvance ? `<p class="muted small">অগ্রিম বেশি নেওয়া হয়েছে: ${toBnMoney(s.overAdvance)} টাকা</p>` : ''}
+      ${s.overAdvance ? `<p class="muted small">Advance taken in excess: ${toBnMoney(s.overAdvance)} Taka</p>` : ''}
     </div>`;
   }
-  $('salary-table').innerHTML = rows || '<p class="muted">কোনো কর্মচারী নেই।</p>';
+  $('salary-table').innerHTML = rows || '<p class="muted">No employees.</p>';
 }
 
 function fillAdvanceSelects() {
@@ -283,18 +283,18 @@ function fillAdvanceSelects() {
   $('leave-emp').innerHTML = opts;
 }
 
-// অগ্রিম যোগ করা
+// Add an advance
 async function addAdvance() {
   if (!needFirebase()) return;
   const empId = $('advance-emp').value;
   const amount = Number($('advance-amount').value);
   const note = $('advance-note').value.trim();
-  if (!empId) return toast('কর্মচারী বাছুন।', true);
-  if (!amount || amount <= 0) return toast('সঠিক পরিমাণ লিখুন।', true);
+  if (!empId) return toast('Please choose an employee.', true);
+  if (!amount || amount <= 0) return toast('Please enter a valid amount.', true);
   await fb.addDoc(advCol(state.shopCode), {
     empId, amount, note, date: dateStr(new Date()), createdAt: fb.serverTimestamp()
   });
-  toast('অগ্রিম যোগ হয়েছে।');
+  toast('Advance added.');
   $('advance-amount').value = '';
   $('advance-note').value = '';
   await renderAdvances();
@@ -308,35 +308,35 @@ async function renderAdvances() {
   ));
   const items = snap.docs.map(d => d.data());
   $('advance-list').innerHTML = items.length
-    ? '<h4>এই মাসের অগ্রিম</h4>' + items.map(a => {
+    ? '<h4>Advances this month</h4>' + items.map(a => {
       const emp = state.employees.find(e => e.id === a.empId);
-      return `<div class="row"><span>${emp ? emp.name : ''} — ${toBn(a.date)}</span><b>${toBnMoney(a.amount)} টাকা</b></div>`;
+      return `<div class="row"><span>${emp ? emp.name : ''} — ${toBn(a.date)}</span><b>${toBnMoney(a.amount)} Taka</b></div>`;
     }).join('')
-    : '<p class="muted">এই মাসে কোনো অগ্রিম নেই।</p>';
+    : '<p class="muted">No advances this month.</p>';
 }
 
-// ছুটি চিহ্নিত করা
+// Mark leave
 async function markLeave() {
   if (!needFirebase()) return;
   const empId = $('leave-emp').value;
   const date = $('leave-date').value;
-  if (!empId || !date) return toast('কর্মচারী ও তারিখ বাছুন।', true);
+  if (!empId || !date) return toast('Please choose an employee and a date.', true);
   await fb.setDoc(attDoc(state.shopCode, empId, date), { empId, date, status: 'leave' }, { merge: true });
-  toast('ছুটি চিহ্নিত হয়েছে।');
+  toast('Leave marked.');
   await renderToday();
   await renderSalary();
 }
 
-// ---------- সেলসম্যান: যোগদান ----------
+// ---------- Salesman: join ----------
 
 async function joinShop() {
   if (!needFirebase()) return;
   const code = $('input-join-code').value.trim().toUpperCase();
   const name = $('input-join-name').value.trim();
   const phone = $('input-join-phone').value.trim();
-  if (!code || !name || !phone) return toast('কোড, নাম ও মোবাইল নম্বর — সবগুলো লিখুন।', true);
+  if (!code || !name || !phone) return toast('Please enter the code, name and mobile number — all of them.', true);
   const snap = await fb.getDoc(shopRef(code));
-  if (!snap.exists()) return toast('এই কোডের কোনো দোকান পাওয়া যায়নি।', true);
+  if (!snap.exists()) return toast('No shop found with this code.', true);
   const ref = await fb.addDoc(empsCol(code), {
     name, phone, monthlySalary: 0, joinedAt: fb.serverTimestamp()
   });
@@ -346,14 +346,14 @@ async function joinShop() {
   state.employee = { id: ref.id, name, phone, monthlySalary: 0 };
   localStorage.setItem('dh_emp', JSON.stringify({ shopCode: code, empId: ref.id }));
   await loadEmpDash();
-  toast('দোকানে যোগ দেওয়া হয়েছে!');
+  toast('You have joined the shop!');
 }
 
-// ---------- সেলসম্যান: ড্যাশবোর্ড ----------
+// ---------- Salesman: dashboard ----------
 
 async function loadEmpDash() {
-  $('emp-greeting').textContent = `আসসালামু আলাইকুম, ${state.employee.name}!`;
-  $('emp-shop-line').textContent = `${state.shop.name} • কোড: ${state.shopCode}`;
+  $('emp-greeting').textContent = `Hello, ${state.employee.name}!`;
+  $('emp-shop-line').textContent = `${state.shop.name} • Code: ${state.shopCode}`;
   updateHeaderName();
   await refreshEmpToday();
   await renderEmpSummary();
@@ -368,22 +368,22 @@ async function refreshEmpToday() {
     const d = snap.data();
     const inT = d.checkIn && d.checkIn.toDate ? fmtTime(d.checkIn.toDate()) : '—';
     const outT = d.checkOut && d.checkOut.toDate ? fmtTime(d.checkOut.toDate()) : null;
-    box.innerHTML = `<b>আজকের অবস্থা:</b> হাজিরা দেওয়া হয়েছে (${inT})` +
-      (outT ? `<br>ছুটি নেওয়া হয়েছে (${outT})` : '<br>এখনো ছুটি নেওয়া হয়নি।');
+    box.innerHTML = `<b>Today:</b> Attendance marked (${inT})` +
+      (outT ? `<br>Checked out (${outT})` : '<br>Not checked out yet.');
   } else if (snap.exists() && snap.data().status === 'leave') {
-    box.innerHTML = '<b>আজকের অবস্থা:</b> আজ আপনার ছুটি।';
+    box.innerHTML = '<b>Today:</b> You are on leave today.';
   } else {
-    box.innerHTML = '<b>আজকের অবস্থা:</b> এখনো হাজিরা দেওয়া হয়নি।';
+    box.innerHTML = '<b>Today:</b> Attendance not marked yet.';
   }
 }
 
-// GPS যাচাই করে চেক-ইন / চেক-আউট
+// Check in / check out with GPS verification
 async function doCheckInOut(kind) {
   if (!needFirebase()) return;
   if (!state.shop.location) {
-    return toast('দোকানের লোকেশন এখনো সেট করা হয়নি — দোকানদারকে বলুন লোকেশন সেট করতে।', true);
+    return toast('The shop location is not set yet — ask the shop owner to set the location.', true);
   }
-  toast('লোকেশন যাচাই করা হচ্ছে…');
+  toast('Verifying location…');
   try {
     const pos = await getPosition();
     const dist = haversineMeters(
@@ -391,10 +391,10 @@ async function doCheckInOut(kind) {
       state.shop.location.lat, state.shop.location.lng
     );
     if (dist > CHECKIN_RADIUS_METERS) {
-      $('emp-location-msg').textContent = `আপনি দোকান থেকে ${toBn(Math.round(dist))} মিটার দূরে আছেন।`;
-      return toast(`আপনি দোকান থেকে ${toBn(Math.round(dist))} মিটার দূরে আছেন। ${toBn(CHECKIN_RADIUS_METERS)} মিটারের মধ্যে এসে চেষ্টা করুন।`, true);
+      $('emp-location-msg').textContent = `You are ${toBn(Math.round(dist))} metres from the shop.`;
+      return toast(`You are ${toBn(Math.round(dist))} metres from the shop. Come within ${toBn(CHECKIN_RADIUS_METERS)} metres and try again.`, true);
     }
-    $('emp-location-msg').textContent = `দোকান থেকে দূরত্ব: ${toBn(Math.round(dist))} মিটার।`;
+    $('emp-location-msg').textContent = `Distance from shop: ${toBn(Math.round(dist))} metres.`;
     const today = dateStr(new Date());
     const ref = attDoc(state.shopCode, state.empId, today);
     if (kind === 'in') {
@@ -403,14 +403,14 @@ async function doCheckInOut(kind) {
         checkIn: fb.serverTimestamp(),
         checkInLat: pos.coords.latitude, checkInLng: pos.coords.longitude
       }, { merge: true });
-      toast('হাজিরা দেওয়া হয়েছে। শুভ দিন!');
+      toast('Attendance marked. Have a good day!');
     } else {
       const snap = await fb.getDoc(ref);
       if (!snap.exists() || snap.data().status !== 'present') {
-        return toast('আগে হাজিরা দিন, তারপর ছুটি নিতে পারবেন।', true);
+        return toast('Mark your attendance first, then you can check out.', true);
       }
       await fb.setDoc(ref, { checkOut: fb.serverTimestamp() }, { merge: true });
-      toast('ছুটি নেওয়া হয়েছে। আল্লাহ হাফেজ!');
+      toast('Checked out. Goodbye!');
     }
     await refreshEmpToday();
   } catch (e) {
@@ -418,7 +418,7 @@ async function doCheckInOut(kind) {
   }
 }
 
-// সেলসম্যানের নিজের এই মাসের হিসাব
+// Salesman's own account for this month
 async function renderEmpSummary() {
   const now = new Date();
   const ym = monthStr(now);
@@ -434,16 +434,16 @@ async function renderEmpSummary() {
   });
   $('emp-summary').innerHTML = `
     <div class="grid2">
-      <span>মাসিক বেতন</span><b>${toBnMoney(state.employee.monthlySalary || 0)} টাকা</b>
-      <span>উপস্থিত</span><span>${toBn(s.present)} দিন</span>
-      <span>অনুপস্থিত</span><span>${toBn(s.absent)} দিন</span>
-      <span>ছুটি</span><span>${toBn(s.leave)} দিন</span>
-      <span>অগ্রিম নেওয়া</span><span>${toBnMoney(s.advanceTotal)} টাকা</span>
-      <span><b>এই মাসে পাবেন</b></span><b class="payable">${toBnMoney(s.payable)} টাকা</b>
+      <span>Monthly salary</span><b>${toBnMoney(state.employee.monthlySalary || 0)} Taka</b>
+      <span>Present</span><span>${toBn(s.present)} days</span>
+      <span>Absent</span><span>${toBn(s.absent)} days</span>
+      <span>Leave</span><span>${toBn(s.leave)} days</span>
+      <span>Advances taken</span><span>${toBnMoney(s.advanceTotal)} Taka</span>
+      <span><b>You will get this month</b></span><b class="payable">${toBnMoney(s.payable)} Taka</b>
     </div>`;
 }
 
-// ---------- আগের সেশন ফিরিয়ে আনা ----------
+// ---------- Restore previous session ----------
 
 async function restoreSession() {
   const adminShop = localStorage.getItem('dh_admin_shop');
@@ -457,7 +457,7 @@ async function restoreSession() {
         await loadAdminDash();
         return;
       }
-    } catch (e) { /* চুপচাপ হোমে থাকুন */ }
+    } catch (e) { /* stay quietly on home */ }
   }
   if (empRaw) {
     try {
@@ -474,12 +474,12 @@ async function restoreSession() {
         await loadEmpDash();
         return;
       }
-    } catch (e) { /* চুপচাপ হোমে থাকুন */ }
+    } catch (e) { /* stay quietly on home */ }
   }
   showScreen('home');
 }
 
-// ---------- ইভেন্ট ----------
+// ---------- Events ----------
 
 function bindEvents() {
   $('btn-role-admin').addEventListener('click', () => showScreen('admin-start'));
@@ -494,9 +494,9 @@ function bindEvents() {
     const code = $('shop-code-display').textContent;
     try {
       await navigator.clipboard.writeText(code);
-      toast('কোড কপি হয়েছে।');
+      toast('Code copied.');
     } catch (e) {
-      toast('কপি করা যায়নি — কোডটি লিখে রাখুন: ' + code, true);
+      toast('Could not copy — write the code down: ' + code, true);
     }
   });
   $('btn-set-location').addEventListener('click', setLocation);
@@ -535,7 +535,7 @@ function bindEvents() {
   });
 }
 
-// ---------- শুরু ----------
+// ---------- Start ----------
 
 async function init() {
   bindEvents();
@@ -549,7 +549,7 @@ async function init() {
     await restoreSession();
   } catch (e) {
     console.error(e);
-    toast('Firebase-এ সংযোগ করা যায়নি — ইন্টারনেট চেক করুন।', true);
+    toast('Could not connect to Firebase — check your internet.', true);
     showScreen('home');
   }
 }

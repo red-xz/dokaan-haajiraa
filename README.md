@@ -1,7 +1,7 @@
-# Dokaan Haajiraa — দোকান হাজিরা
+# Shop Attendance
 
 <p align="center">
-  <img src="assets/screenshot-home-390.jpg" alt="Dokaan Haajiraa home screen" width="300">
+  <img src="assets/screenshot-home-390.jpg" alt="Shop Attendance home screen" width="300">
 </p>
 
 **Attendance and salary for small shops — no spreadsheets.**
@@ -49,16 +49,7 @@ plan) and fill in `firebase-config.js`, then
 
 Plain HTML/CSS/JS — no build step, no framework. Firebase (Firestore +
 Anonymous Auth + Hosting) on the free Spark plan. Designed for low-end
-phones and small shop owners, in Bangla first.
-
-## বাংলায় সংক্ষেপে
-
-ছোট দোকানের কর্মচারীদের হাজিরা ও বেতনের অ্যাপ। দোকানদার দোকান খুলে
-৬ অক্ষরের কোড পান; কর্মচারী (সেলসম্যান) সেই কোড দিয়ে যোগ দেন।
-দোকান থেকে ১০০ মিটারের মধ্যে থাকলেই হাজিরা দেওয়া যায়। মাসিক বেতন ÷ ৩০
-= দৈনিক মজুরি; অনুপস্থিত/ছুটির দিনের টাকা কাটা যায়; শুক্রবার সাপ্তাহিক
-ছুটি (বেতনসহ)। কর্মচারীদের কোনো সাইন-ইন লাগে না — ফোনের ব্রাউজারে
-লিংক খুললেই চলে।
+phones and small shop owners.
 
 ## License
 
